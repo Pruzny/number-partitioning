@@ -9,7 +9,6 @@ NUMBERS = [i for i in range(1, 11)]
 
 
 def simulated_annealing(
-        path: str,
         numbers: list[int | float],
         max_iter: int,
         initial_temp: int,
@@ -63,9 +62,9 @@ def simulated_annealing(
         # Reduzir a temperatura após o fim da iteração
         temperature *= cooling_rate
 
-    with open(path, "w") as file:
-        for i in range(len(numbers)):
-            file.write(f"{numbers[i]} | {best_solution[i]}\n")
+    # with open(path, "w") as file:
+    #     for i in range(len(numbers)):
+    #         file.write(f"{numbers[i]} | {best_solution[i]}\n")
 
     return best_solution, best_difference
 
