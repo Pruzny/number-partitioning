@@ -1,3 +1,4 @@
+from concurrent.futures import ThreadPoolExecutor
 from src.fitness import Fitness
 import random
 
@@ -14,7 +15,9 @@ class Busca:
     def inicia_busca(cls, S, iteracoes, tamanho_tabu):
         cls.S = S
         cls.iteracoes = iteracoes
-        cls.tamanho = tamanho_tabu
+        cls.tamanho = int(len(S) * 0.1)
+
+        cls.limite_sem_melhoria = max(int(iteracoes * 0.1), 100)
 
         Fitness.inicia_Fitness()
 
@@ -33,61 +36,84 @@ class Busca:
         melhor_solucao = solucao_atual
         melhor_fitness = fitness_atual
 
+        sem_melhoria = 0
+
         for _ in range(cls.iteracoes):
             vizinhos = cls.gerar_vizinhos(solucao_atual)
-            melhor_vizinho, melhor_fitness_vizinho = cls.selecionar_melhor_vizinho(vizinhos, lista)
+            melhor_vizinho, melhor_fitness_vizinho = cls.selecionar_melhor_vizinho(vizinhos, lista, melhor_fitness)
 
             if melhor_fitness_vizinho < melhor_fitness:
                 melhor_solucao = melhor_vizinho
                 melhor_fitness = melhor_fitness_vizinho
+                sem_melhoria = 0
+            else:
+                sem_melhoria += 1
 
-            solucao_atual = melhor_vizinho
-            fitness_atual = melhor_fitness_vizinho
+            if sem_melhoria > cls.limite_sem_melhoria:
+                solucao_atual = cls.gerar_aleatorio()
+                sem_melhoria = 0
+            elif melhor_vizinho:
+                solucao_atual = melhor_vizinho
+                fitness_atual = melhor_fitness_vizinho
 
             cls.atualizar_lista(lista, solucao_atual)
             if melhor_fitness == 0: break
+            if melhor_fitness == 1 & random.randint(0, 1) == 1: break 
 
         return melhor_solucao, melhor_fitness
 
     # Gera uma configuracao inicial aleatoria para os dois grupos
     @classmethod
     def gerar_aleatorio(cls):
-        solucao = []
-        for _ in cls.S:
-            solucao.append(random.randint(0, 1))
-
-        return solucao
+        return [random.randint(0, 1) for _ in cls.S]
 
     # Gera diversos vizinhos a partir da inversao de cada elemento da solucao atual
-    # essa metodologia pode ser alterada conforme a preferencia dos testes
+    # com uma heurística para priorizar elementos que causam maior desequilíbrio
     @classmethod
     def gerar_vizinhos(cls, solucao):
+        soma_grupo_0 = sum(cls.S[i] for i in range(len(solucao)) if solucao[i] == 0)
+        soma_grupo_1 = sum(cls.S[i] for i in range(len(solucao)) if solucao[i] == 1)
+
+        desequilibrio = abs(soma_grupo_0 - soma_grupo_1)
         vizinhos = []
+
         for i in range(len(solucao)):
             vizinho = solucao.copy()
             vizinho[i] = 1 - vizinho[i]
-            vizinhos.append(vizinho)
+            nova_soma_0 = soma_grupo_0 + (cls.S[i] if solucao[i] == 1 else -cls.S[i])
+            nova_soma_1 = soma_grupo_1 + (cls.S[i] if solucao[i] == 0 else -cls.S[i])
+            novo_desequilibrio = abs(nova_soma_0 - nova_soma_1)
+
+            if novo_desequilibrio < desequilibrio:
+                vizinhos.append(vizinho)
 
         return vizinhos
 
     # Essa funcao escolhe o melhor vizinho gerado a partir do fitness calculado entre eles
     # filtrando aqueles vizinhos que estiverem presentes na lista tabu no momento do calculo
+    # e excluindo os vizinhos cujo fitness é pior do que o atual melhor fitness
     @classmethod
-    def selecionar_melhor_vizinho(cls, vizinhos, lista):
+    def selecionar_melhor_vizinho(cls, vizinhos, lista, melhor_fitness):
         melhor_vizinho = None
-        melhor_fitness = float('inf')
+        melhor_fitness_vizinho = float('inf')
 
-        for vizinho in vizinhos:
-            if vizinho in lista: continue
+        def calcular_fitness_vizinho(vizinho):
+            return vizinho, Fitness.calcula_fitness(vizinho, cls.S)
 
-            fitness_atual = Fitness.calcula_fitness(vizinho, cls.S)
+        with ThreadPoolExecutor() as executor:
+            resultados = executor.map(calcular_fitness_vizinho, vizinhos)
 
-            if fitness_atual < melhor_fitness:
+        for vizinho, fitness_atual in resultados:
+            if vizinho in lista and fitness_atual >= melhor_fitness:
+                continue
+
+            if fitness_atual < melhor_fitness_vizinho:
                 melhor_vizinho = vizinho
-                melhor_fitness = fitness_atual
-                if melhor_fitness == 0: break
+                melhor_fitness_vizinho = fitness_atual
+                if melhor_fitness_vizinho == 0:
+                    break
 
-        return melhor_vizinho, melhor_fitness
+        return melhor_vizinho, melhor_fitness_vizinho
 
     # Atualiza a lista tabu conforme cada solucao for escolhida
     @classmethod
